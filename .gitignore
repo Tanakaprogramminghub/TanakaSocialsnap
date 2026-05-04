@@ -1,0 +1,9 @@
+config.json
+output/
+*.pyc
+__pycache__/
+*.log
+*.jpg
+*.png
+faces/
+.DS_Store
