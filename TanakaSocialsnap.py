@@ -1,381 +1,314 @@
 #!/usr/bin/env python3
 """
-SocialSnap – Termux OSINT Facial Recognition Tool
-Created by Tanaka Mucheke | Ethical Use Only
+Tanaka Social Snap – Simple OSINT Face Tool
+Created by Tanaka Mucheke | Use only with permission
 """
 
 import os
 import sys
 import json
 import time
-import csv
 import subprocess
-import tempfile
-import shutil
-import argparse
+import re
+from urllib.parse import urlparse
 from datetime import datetime
-from pathlib import Path
 
 try:
     import cv2
-    import numpy as np
     from colorama import init, Fore, Style
     import requests
-    from PIL import Image
-    import pickle
-    import re
-    from urllib.parse import urlparse
 
     init(autoreset=True)
 except ImportError as e:
-    print(f"Error: Missing required module. Run: pip install opencv-python-headless numpy colorama requests Pillow")
+    print("ERROR: Run this command first: pip install opencv-python-headless colorama requests")
     sys.exit(1)
-
 
 # ---------- ASCII Banner ----------
 BANNER = f"""
-{Fore.CYAN}{Style.BRIGHT}
-   ███████╗ ██████╗  ██████╗██╗ █████╗ ██╗     ███████╗███╗   ██╗ █████╗ ██████╗ 
-   ██╔════╝██╔═══██╗██╔════╝██║██╔══██╗██║     ██╔════╝████╗  ██║██╔══██╗██╔══██╗
-   ███████╗██║   ██║██║     ██║███████║██║     █████╗  ██╔██╗ ██║███████║██████╔╝
-   ╚════██║██║   ██║██║     ██║██╔══██║██║     ██╔══╝  ██║╚██╗██║██╔══██║██╔═══╝ 
-   ███████║╚██████╔╝╚██████╗██║██║  ██║███████╗███████╗██║ ╚████║██║  ██║██║     
-   ╚══════╝ ╚═════╝  ╚═════╝╚═╝╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     
+{Fore.RED}{Style.BRIGHT}
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                                                                                ║
+║   ████████╗ █████╗ ███╗   ██╗ █████╗ ██╗  ██╗ █████╗                           ║
+║   ╚══██╔══╝██╔══██╗████╗  ██║██╔══██╗██║ ██╔╝██╔══██╗                          ║
+║      ██║   ███████║██╔██╗ ██║███████║█████╔╝ ███████║                          ║
+║      ██║   ██╔══██║██║╚██╗██║██╔══██║██╔═██╗ ██╔══██║                          ║
+║      ██║   ██║  ██║██║ ╚████║██║  ██║██║  ██╗██║  ██║                          ║
+║      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝                          ║
+║                                                                                ║
+║   ███████╗ ██████╗  ██████╗██╗ █████╗ ██╗     ███████╗                         ║
+║   ██╔════╝██╔═══██╗██╔════╝██║██╔══██╗██║     ██╔════╝                         ║
+║   ███████╗██║   ██║██║     ██║███████║██║     █████╗                           ║
+║   ╚════██║██║   ██║██║     ██║██╔══██║██║     ██╔══╝                           ║
+║   ███████║╚██████╔╝╚██████╗██║██║  ██║███████╗███████╗                         ║
+║   ╚══════╝ ╚═════╝  ╚═════╝╚═╝╚═╝  ╚═╝╚══════╝╚══════╝                         ║
+║                                                                                ║
+║   {Fore.CYAN}{Style.BRIGHT}███████╗███╗   ██╗ █████╗ ██████╗{Fore.RED}{Style.BRIGHT}                                         ║
+║   {Fore.CYAN}{Style.BRIGHT}██╔════╝████╗  ██║██╔══██╗██╔══██╗{Fore.RED}{Style.BRIGHT}                                        ║
+║   {Fore.CYAN}{Style.BRIGHT}███████╗██╔██╗ ██║███████║██████╔╝{Fore.RED}{Style.BRIGHT}                                        ║
+║   {Fore.CYAN}{Style.BRIGHT}╚════██║██║╚██╗██║██╔══██║██╔═══╝{Fore.RED}{Style.BRIGHT}                                         ║
+║   {Fore.CYAN}{Style.BRIGHT}███████║██║ ╚████║██║  ██║██║{Fore.RED}{Style.BRIGHT}                                             ║
+║   {Fore.CYAN}{Style.BRIGHT}╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝{Fore.RED}{Style.BRIGHT}                                             ║
+║                                                                                ║
+╠════════════════════════════════════════════════════════════════════════════════╣
+║                  Created by Tanaka Mucheke                                      ║
+╠════════════════════════════════════════════════════════════════════════════════╣
+║         🔴 USE ONLY WITH EXPLICIT PERMISSION 🔴                                 ║
+║         ⚠️  UNAUTHORIZED TRACKING IS ILLEGAL  ⚠️                                ║
+╚════════════════════════════════════════════════════════════════════════════════╝
 {Style.RESET_ALL}
-{Fore.YELLOW}      OSINT Facial Recognition Tool - Created by Tanaka Mucheke{Style.RESET_ALL}
-{Fore.RED}[!] For educational/ethical use only. Do not use without explicit consent.{Style.RESET_ALL}
 """
 
+# ---------- Loading Animation ----------
+def loading_animation(message, duration=2):
+    """Display a spinning animation with Tanaka Mucheke name."""
+    spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    end_time = time.time() + duration
+    i = 0
+    while time.time() < end_time:
+        sys.stdout.write(f"\r{Fore.CYAN}{spinner[i % len(spinner)]} {message} {Fore.MAGENTA}Tanaka Mucheke{Style.RESET_ALL}")
+        sys.stdout.flush()
+        time.sleep(0.1)
+        i += 1
+    sys.stdout.write("\r" + " " * 60 + "\r")
+    sys.stdout.flush()
 
-# ---------- Configuration ----------
-CONFIG_FILE = "config.json"
-DEFAULT_CONFIG = {
-    "google_api_key": "",
-    "google_cx": "",
-    "use_api": False,
-    "output_dir": "output"
-}
-
-def load_config():
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(DEFAULT_CONFIG, f, indent=4)
-    with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
-
+def animated_dots(message, duration=1.5):
+    """Show animated dots with name."""
+    end_time = time.time() + duration
+    dots = 0
+    while time.time() < end_time:
+        sys.stdout.write(f"\r{Fore.GREEN}{message}{'.' * (dots % 4)}{' ' * (3 - (dots % 4))} {Fore.MAGENTA}Tanaka Mucheke{Style.RESET_ALL}")
+        sys.stdout.flush()
+        time.sleep(0.3)
+        dots += 1
+    sys.stdout.write("\r" + " " * 60 + "\r")
+    sys.stdout.flush()
 
 # ---------- Helper Functions ----------
-def clear_screen():
+def press_enter(message="👋 Press ENTER to continue..."):
+    input(f"{Fore.CYAN}{message}{Style.RESET_ALL}")
+    print(f"{Fore.MAGENTA}✨ Tanaka Mucheke - Tanaka Social Snap ✨{Style.RESET_ALL}")
+
+def clear():
     os.system("clear" if os.name == "posix" else "cls")
 
-def print_progress(message):
-    print(f"{Fore.GREEN}[*] {message}{Style.RESET_ALL}")
-
-def print_success(message):
-    print(f"{Fore.CYAN}[+] {message}{Style.RESET_ALL}")
-
-def print_error(message):
-    print(f"{Fore.RED}[-] {message}{Style.RESET_ALL}")
-
-
-# ---------- 1. Image Upload & Face Detection ----------
-def select_image():
-    """Allow user to select image from Termux shared storage."""
-    print_progress("Selecting image from gallery...")
-
-    # Create a temporary HTML file for gallery picking
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <body>
-        <input type="file" id="fileInput" accept="image/*" />
-        <script>
-            document.getElementById('fileInput').addEventListener('change', function(e) {
-                var file = e.target.files[0];
-                var reader = new FileReader();
-                reader.onload = function(event) {
-                    var img = new Image();
-                    img.onload = function() {
-                        var canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        var ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        var dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                        var link = document.createElement('a');
-                        link.download = 'selected_image.jpg';
-                        link.href = dataUrl;
-                        link.click();
-                        setTimeout(function() {
-                            window.close();
-                        }, 1000);
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            });
-        </script>
-    </body>
-    </html>
-    """
-
-    temp_html = "/sdcard/pick_image.html"
-    temp_img = "/sdcard/selected_image.jpg"
-
-    with open(temp_html, "w") as f:
-        f.write(html)
-
-    # Open in browser using termux-open
-    subprocess.run(["termux-open", temp_html], check=False)
-    input(f"{Fore.YELLOW}Select an image from your gallery, then press Enter to continue...{Style.RESET_ALL}")
-
-    if os.path.exists(temp_img):
-        image_path = temp_img
-        print_success(f"Image saved to {image_path}")
-        return image_path
-    else:
-        print_error("No image selected or file not found.")
-        return None
-
-def detect_faces(image_path):
-    """Detect faces in an image using OpenCV's Haar Cascade."""
-    print_progress("Detecting faces in the image...")
-
-    # Load pre-trained Haar Cascade for face detection
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    face_cascade = cv2.CascadeClassifier(cascade_path)
-
-    # Read image
-    img = cv2.imread(image_path)
-    if img is None:
-        print_error("Could not read image. File may be corrupted.")
-        return None, None
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Detect faces
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
-    if len(faces) == 0:
-        print_error("No faces detected in the image.")
-        return None, None
-
-    print_success(f"Detected {len(faces)} face(s). Processing the first face...")
-
-    # Extract the first face
-    (x, y, w, h) = faces[0]
-    face_img = img[y:y+h, x:x+w]
-
-    # Save face image
-    output_dir = "face_extracts"
-    os.makedirs(output_dir, exist_ok=True)
-    face_path = os.path.join(output_dir, f"face_{int(time.time())}.jpg")
-    cv2.imwrite(face_path, face_img)
-
-    return face_path, faces
-
-def upload_to_imgur(image_path):
-    """Upload image to Imgur and return URL."""
-    print_progress("Uploading face to Imgur for reverse search...")
-
-    client_id = "546c25a59c58ad7"  # Public test Client ID
-    url = "https://api.imgur.com/3/upload"
-
-    headers = {"Authorization": f"Client-ID {client_id}"}
-    with open(image_path, "rb") as img_file:
-        files = {"image": img_file}
-        try:
-            response = requests.post(url, headers=headers, files=files)
-            response.raise_for_status()
-            data = response.json()
-            return data["data"]["link"]
-        except Exception as e:
-            print_error(f"Failed to upload: {e}")
-            return None
-
-
-# ---------- 2. Reverse Image Search ----------
-def google_reverse_search(image_url):
-    """Perform reverse image search using Google's reverse image search."""
-    print_progress("Performing reverse image search...")
-
-    search_url = "https://www.google.com/searchbyimage?image_url={}&safe=off".format(image_url)
-
-    # Use requests to fetch search results
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 12; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
-    }
-    try:
-        response = requests.get(search_url, headers=headers)
-        response.raise_for_status()
-        # Extract potential page URLs (simplified example)
-        page_content = response.text
-        # Find https://www.instagram.com/ p=re. URLs
-        social_urls = re.findall(r'(https?://(?:www\.)?(?:instagram|facebook|twitter|x|linkedin|tiktok)\.com/[^\s"\']+)', page_content)
-        unique_urls = list(set(social_urls))
-        if unique_urls:
-            print_success(f"Found {len(unique_urls)} potential social URLs.")
-            return unique_urls
-        else:
-            print_error("No social URLs found.")
-            return []
-    except Exception as e:
-        print_error(f"Reverse image search failed: {e}")
-        return []
-
-def extract_username_from_url(url):
-    """Extract username from social media URL."""
-    parsed = urlparse(url)
-    path = parsed.path.strip("/")
-    parts = path.split("/")
-    if "instagram.com" in url:
-        # Instagram usernames are typically after /p/ or directly
-        if parts and len(parts) > 0:
-            return parts[0]
-    elif "facebook.com" in url:
-        if parts and len(parts) > 0:
-            return parts[0]
-    elif "twitter.com" in url or "x.com" in url:
-        if parts and len(parts) > 0:
-            return parts[0]
-    elif "linkedin.com" in url:
-        if parts and len(parts) > 0:
-            return parts[0]
-    elif "tiktok.com" in url:
-        if parts and len(parts) > 0:
-            return parts[0]
-    return None
-
-
-# ---------- 3. Social Media Lookup ----------
-def get_social_accounts_email(username):
-    """Attempt to find social accounts using holehe (if available)."""
-    try:
-        import holehe
-        emails = holehe.check_email(f"{username}@example.com")  # Not ideal, but placeholder
-        # We'll need a better approach
-        return []
-    except ImportError:
-        print_error("holehe not installed. Install with: pip install holehe")
-        return []
-
-def get_social_data_instagram(username):
-    """Placeholder for Instagram data extraction."""
-    print_progress(f"Fetching Instagram data for {username}...")
-    # Use instagram-scraper if available
-    # For now, return mock data
-    return {
-        "username": username,
-        "full_name": "Unknown",
-        "bio": "No bio found",
-        "followers": "N/A",
-        "following": "N/A",
-        "profile_pic_url": "",
-        "external_url": "",
-        "location": ""
-    }
-
-def search_email_profiles(email):
-    """Search for profiles by email using holehe."""
-    print_progress(f"Searching for email {email} across platforms...")
-    try:
-        import holehe
-        modules = holehe.core.get_modules()
-        results = {}
-        for module in modules:
-            print(f"Checking {module.__name__}...")
-            out = holehe.check_email(email, module)
-            if out.get("rateLimit") is False and out.get("exists") is True:
-                results[module.__name__] = out
-        return results
-    except ImportError:
-        print_error("holehe not installed for email search.")
-        return {}
-
-
-# ---------- 4. Data Export ----------
-def export_json(data, filename="output.json"):
-    """Export collected data to JSON."""
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
-    print_success(f"Data exported to {filename}")
-
-def export_csv(data, filename="output.csv"):
-    """Export collected data to CSV."""
-    if not data:
-        return
-    keys = data[0].keys() if isinstance(data, list) else data.keys()
-    with open(filename, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=keys)
-        writer.writeheader()
-        if isinstance(data, list):
-            writer.writerows(data)
-        else:
-            writer.writerow(data)
-    print_success(f"Data exported to {filename}")
-
-
-# ---------- 5. CLI & Main ----------
-def main():
-    clear_screen()
-    print(BANNER)
-    config = load_config()
-
-    print(f"{Fore.WHITE}Main Menu:{Style.RESET_ALL}")
-    print("  1. Scan image for social profiles")
-    print("  2. Search by email")
-    print("  3. Config")
-    print("  4. Exit")
-    choice = input(f"{Fore.YELLOW}Select option: {Style.RESET_ALL}").strip()
+# ---------- Step 1: Get the Image ----------
+def get_image_path():
+    print(f"\n{Fore.GREEN}📸 STEP 1: TELL ME WHERE YOUR PHOTO IS{Style.RESET_ALL}")
+    print("Choose a way:")
+    print("  1️⃣ I will type the full path (easy with examples)")
+    print("  2️⃣ I will copy the photo to this folder and just type its name")
+    choice = input(f"{Fore.CYAN}👉 Type 1 or 2: {Style.RESET_ALL}").strip()
 
     if choice == "1":
-        image_path = select_image()
-        if not image_path:
-            return
-        face_path, faces = detect_faces(image_path)
-        if not face_path:
-            return
-        # Upload for reverse search
-        img_url = upload_to_imgur(face_path)
-        if not img_url:
-            return
-        social_urls = google_reverse_search(img_url)
-        # Extract usernames from URLs
-        usernames = []
-        for url in social_urls:
-            username = extract_username_from_url(url)
-            if username:
-                usernames.append(username)
-        if usernames:
-            print_success(f"Extracted usernames: {', '.join(usernames)}")
-            # Fetch data for each username (simplified)
-            all_data = []
-            for uname in usernames:
-                data = get_social_data_instagram(uname)
-                all_data.append(data)
-            export_data = all_data
-            export_json(export_data)
-            export_csv(export_data)
+        print("\n📂 Examples of full paths on Android:")
+        print("   /sdcard/DCIM/Camera/IMG_20240501.jpg")
+        print("   /sdcard/Download/selfie.png")
+        print("   /sdcard/Pictures/myface.jpg\n")
+        path = input("👉 Now type your full path: ").strip()
+        if os.path.exists(path):
+            return path
         else:
-            print_error("No usernames found.")
+            print(f"{Fore.RED}❌ File not found. Check the path.{Style.RESET_ALL}")
+            press_enter("👉 Press ENTER to go back...")
+            return None
+
     elif choice == "2":
-        email = input("Enter email: ").strip()
-        if email:
-            results = search_email_profiles(email)
-            export_json(results)
+        print(f"\n📁 Current folder: {os.getcwd()}")
+        print("👉 Copy your photo here, then type its name (e.g., myface.jpg)")
+        name = input("👉 Filename: ").strip()
+        full = os.path.join(os.getcwd(), name)
+        if os.path.exists(full):
+            return full
         else:
-            print_error("Invalid email.")
-    elif choice == "3":
-        print(f"Config file: {CONFIG_FILE}")
-        print("Edit it manually to add API keys.")
-    elif choice == "4":
-        sys.exit(0)
+            print(f"{Fore.RED}❌ '{name}' not in this folder.{Style.RESET_ALL}")
+            press_enter("👉 Press ENTER to go back...")
+            return None
     else:
-        print_error("Invalid choice.")
+        print(f"{Fore.RED}❌ Invalid choice.{Style.RESET_ALL}")
+        press_enter("👉 Press ENTER to go back...")
+        return None
+
+# ---------- Step 2: Find the Face ----------
+def find_face(image_path):
+    print(f"\n{Fore.GREEN}🔍 STEP 2: LOOKING FOR A FACE...{Style.RESET_ALL}")
+
+    cascade_file = "haarcascade_frontalface_default.xml"
+    if not os.path.exists(cascade_file):
+        animated_dots("📥 Downloading face detector", 2)
+        url = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+        try:
+            r = requests.get(url)
+            with open(cascade_file, "wb") as f:
+                f.write(r.content)
+        except:
+            print(f"{Fore.RED}❌ No internet. Can't download detector.{Style.RESET_ALL}")
+            press_enter()
+            return None
+
+    face_cascade = cv2.CascadeClassifier(cascade_file)
+    img = cv2.imread(image_path)
+    if img is None:
+        print(f"{Fore.RED}❌ Can't read that image. Is it a valid photo?{Style.RESET_ALL}")
+        press_enter()
+        return None
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Animate while detecting
+    loading_animation("🔎 Scanning for faces", 1.5)
+    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+
+    if len(faces) == 0:
+        print(f"{Fore.RED}❌ No face found. Pick a clear, front-facing photo.{Style.RESET_ALL}")
+        press_enter()
+        return None
+
+    print(f"{Fore.GREEN}✅ Found {len(faces)} face(s)! Using the first one.{Style.RESET_ALL}")
+    x, y, w, h = faces[0]
+    face_img = img[y:y+h, x:x+w]
+
+    os.makedirs("faces", exist_ok=True)
+    face_path = os.path.join("faces", f"face_{int(time.time())}.jpg")
+    cv2.imwrite(face_path, face_img)
+    return face_path
+
+# ---------- Step 3: Upload to Imgur ----------
+def upload_face(face_path):
+    print(f"\n{Fore.GREEN}☁️ STEP 3: UPLOADING FACE TO THE WEB...{Style.RESET_ALL}")
+    client_id = "546c25a59c58ad7"
+    url = "https://api.imgur.com/3/upload"
+    headers = {"Authorization": f"Client-ID {client_id}"}
+    with open(face_path, "rb") as f:
+        files = {"image": f}
+        try:
+            # Animated upload
+            animated_dots("📤 Uploading to Imgur", 2)
+            resp = requests.post(url, headers=headers, files=files, timeout=30)
+            data = resp.json()
+            return data["data"]["link"]
+        except:
+            print(f"{Fore.RED}❌ Upload failed. Check your internet.{Style.RESET_ALL}")
+            press_enter()
+            return None
+
+# ---------- Step 4: Open Browser & Ask for Social Links ----------
+def get_social_links(imgur_url):
+    print(f"\n{Fore.GREEN}🌐 STEP 4: TIME TO SEARCH GOOGLE{Style.RESET_ALL}")
+    print(f"Your face is now online at: {Fore.CYAN}{imgur_url}{Style.RESET_ALL}")
+    press_enter("👉 Press ENTER to open this link in your browser...")
+
+    # Try to open with termux-open-url, fallback to manual instruction
+    try:
+        subprocess.run(["termux-open-url", imgur_url], check=False)
+    except FileNotFoundError:
+        print(f"{Fore.YELLOW}⚠️ 'termux-open-url' not found. Please install termux-api (pkg install termux-api){Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}👉 Manually open this URL in your browser: {imgur_url}{Style.RESET_ALL}")
+
+    print(f"""
+{Fore.YELLOW}📖 NOW FOLLOW THESE INSTRUCTIONS EXACTLY:{Style.RESET_ALL}
+1️⃣ Go to Google Images: https://images.google.com
+2️⃣ Click the CAMERA ICON 🔍
+3️⃣ Choose "Paste image URL"
+4️⃣ Paste the link that I gave you above
+5️⃣ Press Search
+6️⃣ Look for social media links (Instagram, Facebook, Twitter, TikTok, LinkedIn)
+
+{Fore.CYAN}👉 When you find any social profile URLs, paste them here (one or more, separated by spaces).
+👉 If you didn't find any, just press ENTER.{Style.RESET_ALL}
+""")
+    user_input = input("📎 Paste URLs here: ").strip()
+    if not user_input:
+        return []
+    return user_input.split()
+
+# ---------- Step 5: Extract Usernames ----------
+def extract_usernames(urls):
+    usernames = []
+    for url in urls:
+        parts = urlparse(url).path.strip("/").split("/")
+        if "instagram.com" in url and parts:
+            usernames.append(parts[0])
+        elif "facebook.com" in url and parts:
+            if parts[0] not in ["profile.php", "people"]:
+                usernames.append(parts[0])
+        elif "twitter.com" in url or "x.com" in url:
+            if parts and parts[0] not in ["i", "home"]:
+                usernames.append(parts[0])
+        elif "tiktok.com" in url and parts:
+            usernames.append(parts[0])
+    return list(set(usernames))
+
+# ---------- Step 6: Save Results ----------
+def save_results(data):
+    os.makedirs("results", exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    json_file = f"results/tanaka_social_snap_{timestamp}.json"
+    with open(json_file, "w") as f:
+        json.dump(data, f, indent=4)
+    print(f"{Fore.GREEN}✅ Saved report to {json_file}{Style.RESET_ALL}")
+    return json_file
+
+# ---------- Main Program with Loop and Animations ----------
+def main():
+    clear()
+    print(BANNER)
+    press_enter("👉 Press ENTER to start...")
+
+    while True:
+        clear()
+        print(BANNER)
+        print(f"\n{Fore.WHITE}{Style.BRIGHT}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}📌 MAIN MENU{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}1.{Style.RESET_ALL} Scan image for social profiles")
+        print(f"  {Fore.CYAN}2.{Style.RESET_ALL} Exit")
+        print(f"{Fore.WHITE}{Style.BRIGHT}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Style.RESET_ALL}")
+        choice = input(f"{Fore.GREEN}👉 Select option (1 or 2): {Style.RESET_ALL}").strip()
+
+        if choice == "1":
+            img_path = get_image_path()
+            if not img_path:
+                continue
+
+            face_path = find_face(img_path)
+            if not face_path:
+                continue
+
+            imgur_url = upload_face(face_path)
+            if not imgur_url:
+                continue
+
+            social_urls = get_social_links(imgur_url)
+            usernames = extract_usernames(social_urls)
+
+            result = {
+                "timestamp": datetime.now().isoformat(),
+                "original_image": img_path,
+                "face_crop": face_path,
+                "imgur_url": imgur_url,
+                "found_urls": social_urls,
+                "usernames": usernames
+            }
+            save_results(result)
+
+            print(f"\n{Fore.GREEN}🎉 SCAN COMPLETE! 🎉{Style.RESET_ALL}")
+            if usernames:
+                print(f"📢 Found usernames: {', '.join(usernames)}")
+            else:
+                print("😕 No usernames found. Maybe the face is not online.")
+            print("\n💾 The full report is saved in the 'results' folder.")
+            press_enter("👉 Press ENTER to return to menu...")
+
+        elif choice == "2":
+            print(f"\n{Fore.YELLOW}👋 Thank you for using Tanaka Social Snap. Goodbye!{Style.RESET_ALL}")
+            sys.exit(0)
+
+        else:
+            print(f"{Fore.RED}❌ Invalid choice. Please enter 1 or 2.{Style.RESET_ALL}")
+            press_enter("👉 Press ENTER to try again...")
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print_error("\nInterrupted.")
+        print(f"\n{Fore.YELLOW}👋 Exited by user. Goodbye!{Style.RESET_ALL}")
         sys.exit(0)
