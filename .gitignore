@@ -1,9 +1,42 @@
-config.json
-output/
-*.pyc
+# Python cache
 __pycache__/
-*.log
-*.jpg
-*.png
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments (if any)
+venv/
+env/
+ENV/
+
+# Generated folders
 faces/
+results/
+face_extracts/          # from older versions
+output/                 # from older versions
+
+# Downloaded Haar cascade
+haarcascade_frontalface_default.xml
+
+# Configuration files (if any)
+config.json
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MacOS junk
 .DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.orig
+*~
+
+# Termux specific
+storage/
